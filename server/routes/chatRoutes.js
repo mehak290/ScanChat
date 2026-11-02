@@ -283,4 +283,157 @@ router.post("/group", protect, async (req, res) => {
 });
 
 
+
+
+// Add Member to Group API
+router.put("/:chatId/members", protect, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { userId } = req.body;
+
+    // Check IDs
+    if (!mongoose.isValidObjectId(chatId) ||
+        !mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({
+        message: "Invalid chat ID or user ID"
+      });
+    }
+
+    // Find group
+    const chat = await Chat.findById(chatId);
+
+    if (!chat) {
+      return res.status(404).json({
+        message: "Chat not found"
+      });
+    }
+
+    // Only group admin can add members
+    if (!chat.isGroupChat) {
+      return res.status(400).json({
+        message: "This is not a group chat"
+      });
+    }
+
+    if (chat.groupAdmin.toString() !== req.user.toString()) {
+      return res.status(403).json({
+        message: "Only group admin can add members"
+      });
+    }
+
+    // Check user exists
+    const User = require("../models/User");
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found"
+      });
+    }
+
+    // Check if already a member
+    if (chat.participants.some(
+      id => id.toString() === userId
+    )) {
+      return res.status(400).json({
+        message: "User is already in this group"
+      });
+    }
+
+    // Add member
+    chat.participants.push(userId);
+    await chat.save();
+
+    const updatedChat = await Chat.findById(chatId)
+      .populate("participants", "name email")
+      .populate("groupAdmin", "name email");
+
+    res.status(200).json(updatedChat);
+
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to add member",
+      error: error.message
+    });
+  }
+});
+
+
+// Remove Member from Group API
+router.delete("/:chatId/members/:userId", protect, async (req, res) => {
+  try {
+    const { chatId, userId } = req.params;
+
+    // Validate IDs
+    if (
+      !mongoose.isValidObjectId(chatId) ||
+      !mongoose.isValidObjectId(userId)
+    ) {
+      return res.status(400).json({
+        message: "Invalid chat ID or user ID"
+      });
+    }
+
+    // Find group
+    const chat = await Chat.findById(chatId);
+
+    if (!chat) {
+      return res.status(404).json({
+        message: "Chat not found"
+      });
+    }
+
+    if (!chat.isGroupChat) {
+      return res.status(400).json({
+        message: "This is not a group chat"
+      });
+    }
+
+    // Only admin can remove members
+    if (chat.groupAdmin.toString() !== req.user.toString()) {
+      return res.status(403).json({
+        message: "Only group admin can remove members"
+      });
+    }
+
+    // Admin cannot remove themselves
+    if (userId === req.user.toString()) {
+      return res.status(400).json({
+        message: "Admin cannot remove themselves"
+      });
+    }
+
+    // Check whether user is a member
+    const isMember = chat.participants.some(
+      id => id.toString() === userId
+    );
+
+    if (!isMember) {
+      return res.status(404).json({
+        message: "User is not a member of this group"
+      });
+    }
+
+    // Remove member
+    chat.participants = chat.participants.filter(
+      id => id.toString() !== userId
+    );
+
+    await chat.save();
+
+    const updatedChat = await Chat.findById(chatId)
+      .populate("participants", "name email")
+      .populate("groupAdmin", "name email");
+
+    res.status(200).json(updatedChat);
+
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to remove member",
+      error: error.message
+    });
+  }
+});
+
+
 module.exports = router;

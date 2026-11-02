@@ -203,4 +203,84 @@ router.get("/users", protect, async (req, res) => {
 });
 
 
+// Create Group Chat API
+router.post("/group", protect, async (req, res) => {
+  try {
+    const { groupName, users } = req.body;
+
+    // Check group name
+    if (!groupName || !groupName.trim()) {
+      return res.status(400).json({
+        message: "Group name is required"
+      });
+    }
+
+    // Check users
+    if (!users || !Array.isArray(users) || users.length < 2) {
+      return res.status(400).json({
+        message: "At least 2 other users are required"
+      });
+    }
+
+    // Validate user IDs
+    const allUsers = [...new Set(users.map(id => id.toString()))];
+
+    if (allUsers.length < 2) {
+      return res.status(400).json({
+        message: "Add at least 2 different users"
+      });
+    }
+
+    if (allUsers.includes(req.user.toString())) {
+      return res.status(400).json({
+        message: "Do not include yourself in users"
+      });
+    }
+
+    const mongoose = require("mongoose");
+    const User = require("../models/User");
+
+    const invalidId = allUsers.some(
+      id => !mongoose.isValidObjectId(id)
+    );
+
+    if (invalidId) {
+      return res.status(400).json({
+        message: "Invalid user ID"
+      });
+    }
+
+    const existingUsers = await User.find({
+      _id: { $in: allUsers }
+    }).select("_id");
+
+    if (existingUsers.length !== allUsers.length) {
+      return res.status(400).json({
+        message: "One or more users do not exist"
+      });
+    }
+
+    // Create group
+    const groupChat = await Chat.create({
+      participants: [req.user, ...allUsers],
+      isGroupChat: true,
+      groupName: groupName.trim(),
+      groupAdmin: req.user
+    });
+
+    const result = await Chat.findById(groupChat._id)
+      .populate("participants", "name email")
+      .populate("groupAdmin", "name email");
+
+    res.status(201).json(result);
+
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to create group",
+      error: error.message
+    });
+  }
+});
+
+
 module.exports = router;

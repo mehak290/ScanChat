@@ -1,4 +1,4 @@
-
+import ChatWindow from "./ChatWindow";
 import { useState, useEffect } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import QRScanner from "./QRScanner";
@@ -169,6 +169,16 @@ function App() {
 
     loadChats();
   }, [isLoggedIn]);
+
+  // OPEN CHAT WINDOW
+if (isLoggedIn && selectedChat) {
+  return (
+    <ChatWindow
+      chat={selectedChat}
+      onBack={() => setSelectedChat(null)}
+    />
+  );
+}
 
   // DASHBOARD
   if (isLoggedIn) {

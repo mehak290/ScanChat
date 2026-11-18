@@ -99,6 +99,11 @@ router.post("/:chatId/messages", protect, async (req, res) => {
         chat.lastMessage = message._id;
         await chat.save();
 
+        // Real-time message broadcasting
+        const io = req.app.get("io");
+
+        io.to(chatId.toString()).emit("receive-message", message);
+
         res.status(201).json(message);
 
     } catch (error) {

@@ -3,54 +3,65 @@ import { io } from "socket.io-client";
 import { useState, useEffect } from "react";
 
 function ChatWindow({ chat, onBack }) {
+  const [currentChat, setCurrentChat] = useState(chat);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // 1. Socket.IO connection
+  const [showMembers, setShowMembers] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+
+  const token = localStorage.getItem("token");
+  const currentUserId = localStorage.getItem("userId");
+
   useEffect(() => {
-    if (!chat?._id) return;
+    setCurrentChat(chat);
+  }, [chat]);
 
-    const token = localStorage.getItem("token");
+  const isGroup = currentChat.isGroupChat;
 
-const socket = io("http://localhost:5000", {
-  auth: {
-    token: token
-  }
-});
+  const adminId =
+    currentChat.groupAdmin?._id || currentChat.groupAdmin;
 
-socket.on("connect_error", (error) => {
-  console.error("Socket authentication failed:", error.message);
-});
+  const isAdmin =
+    String(adminId) === String(currentUserId);
+
+  // SOCKET CONNECTION
+  useEffect(() => {
+    if (!currentChat?._id) return;
+
+    const socket = io("http://localhost:5000", {
+      auth: { token }
+    });
 
     socket.on("connect", () => {
-      console.log("Connected:", socket.id);
-      socket.emit("join-chat", chat._id);
+      socket.emit("join-chat", currentChat._id);
+    });
+
+    socket.on("connect_error", (error) => {
+      console.error("Socket error:", error.message);
     });
 
     socket.on("receive-message", (message) => {
-      setMessages((previousMessages) =>
-        previousMessages.some((item) => item._id === message._id)
-          ? previousMessages
-          : [...previousMessages, message]
+      setMessages((previous) =>
+        previous.some((item) => item._id === message._id)
+          ? previous
+          : [...previous, message]
       );
     });
 
-    return () => {
-      socket.disconnect();
-    };
-  }, [chat?._id]);
+    return () => socket.disconnect();
+  }, [currentChat?._id, token]);
 
-  // 2. Load old messages
+  // LOAD MESSAGES
   useEffect(() => {
     async function loadMessages() {
       try {
         setLoading(true);
 
-        const token = localStorage.getItem("token");
-
         const response = await fetch(
-          `http://localhost:5000/api/chats/${chat._id}/messages`,
+          `http://localhost:5000/api/chats/${currentChat._id}/messages`,
           {
             headers: {
               Authorization: `Bearer ${token}`
@@ -64,30 +75,28 @@ socket.on("connect_error", (error) => {
           throw new Error(data.message || "Failed to load messages");
         }
 
-        setMessages(Array.isArray(data) ? data : data.messages || []);
+        setMessages(
+          Array.isArray(data) ? data : data.messages || []
+        );
       } catch (error) {
-        console.error("Load messages error:", error);
+        console.error(error);
       } finally {
         setLoading(false);
       }
     }
 
-    if (chat?._id) {
-      loadMessages();
-    }
-  }, [chat?._id]);
+    if (currentChat?._id) loadMessages();
+  }, [currentChat?._id, token]);
 
-  // 3. Send message
+  // SEND MESSAGE
   async function sendMessage(event) {
     event.preventDefault();
 
     if (!newMessage.trim()) return;
 
     try {
-      const token = localStorage.getItem("token");
-
       const response = await fetch(
-        `http://localhost:5000/api/chats/${chat._id}/messages`,
+        `http://localhost:5000/api/chats/${currentChat._id}/messages`,
         {
           method: "POST",
           headers: {
@@ -106,24 +115,191 @@ socket.on("connect_error", (error) => {
         throw new Error(data.message || "Failed to send message");
       }
 
-      setMessages((previousMessages) =>
-        previousMessages.some((item) => item._id === data._id)
-          ? previousMessages
-          : [...previousMessages, data]
+      setMessages((previous) =>
+        previous.some((item) => item._id === data._id)
+          ? previous
+          : [...previous, data]
       );
 
       setNewMessage("");
     } catch (error) {
-      console.error("Send message error:", error);
+      alert(error.message);
+    }
+  }
+
+  // SEARCH USERS FOR GROUP
+  async function searchGroupUsers(event) {
+    event.preventDefault();
+
+    if (!searchTerm.trim()) return;
+
+    try {
+      const response = await fetch(
+        `http://localhost:5000/api/chats/users?search=${encodeURIComponent(searchTerm)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Search failed");
+      }
+
+      const members = currentChat.participants || [];
+
+      setSearchResults(
+        data.filter(
+          (user) =>
+            !members.some(
+              (member) => String(member._id || member) === String(user._id)
+            )
+        )
+      );
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  // ADD MEMBER
+  async function addMember(userId) {
+    try {
+      const response = await fetch(
+        `http://localhost:5000/api/chats/${currentChat._id}/members`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ userId })
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Unable to add member");
+      }
+
+      setCurrentChat(data);
+      setSearchResults([]);
+      setSearchTerm("");
+
+      alert("Member added successfully!");
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  // REMOVE MEMBER
+  async function removeMember(userId) {
+    if (!window.confirm("Remove this member from group?")) return;
+
+    try {
+      const response = await fetch(
+        `http://localhost:5000/api/chats/${currentChat._id}/members/${userId}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Unable to remove member");
+      }
+
+      setCurrentChat(data);
+
+      alert("Member removed successfully!");
+    } catch (error) {
       alert(error.message);
     }
   }
 
   return (
     <div className="chat-window">
+
       <button onClick={onBack}>← Back</button>
 
-      <h2>Chat 💬</h2>
+      <h2>
+        {isGroup
+          ? `👥 ${currentChat.groupName}`
+          : "Chat 💬"}
+      </h2>
+
+      {isGroup && (
+        <div>
+          <button onClick={() => setShowMembers(!showMembers)}>
+            {showMembers ? "Hide Group Details" : "Group Members"}
+          </button>
+
+          {showMembers && (
+            <div>
+              <h3>Members</h3>
+
+              {currentChat.participants?.map((member) => {
+                const memberId = member._id || member;
+                const memberName = member.name || "Member";
+
+                return (
+                  <div key={memberId}>
+                    <span>
+                      {memberName}
+                      {String(memberId) === String(adminId) && " 👑 Admin"}
+                    </span>
+
+                    {isAdmin &&
+                      String(memberId) !== String(currentUserId) && (
+                        <button onClick={() => removeMember(memberId)}>
+                          Remove
+                        </button>
+                      )}
+                  </div>
+                );
+              })}
+
+              {isAdmin && (
+                <div>
+                  <h3>Add New Members</h3>
+
+                  <form onSubmit={searchGroupUsers}>
+                    <input
+                      type="text"
+                      placeholder="Search users by name or email"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+
+                    <button type="submit">Search</button>
+                  </form>
+
+                  {searchResults.map((user) => (
+                    <div key={user._id}>
+                      <span>{user.name} ({user.email})</span>
+
+                      <button onClick={() => addMember(user._id)}>
+                        + Add
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!isAdmin && (
+                <p>Only the group admin can manage members.</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="messages">
         {loading ? (
@@ -136,7 +312,7 @@ socket.on("connect_error", (error) => {
               key={message._id}
               className={
                 String(message.sender?._id || message.sender) ===
-                localStorage.getItem("userId")
+                String(currentUserId)
                   ? "sent-message"
                   : "received-message"
               }
@@ -152,11 +328,12 @@ socket.on("connect_error", (error) => {
           type="text"
           placeholder="Type a message..."
           value={newMessage}
-          onChange={(event) => setNewMessage(event.target.value)}
+          onChange={(e) => setNewMessage(e.target.value)}
         />
 
         <button type="submit">Send</button>
       </form>
+
     </div>
   );
 }

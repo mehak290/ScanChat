@@ -22,6 +22,9 @@ function App() {
   );
 
   const [selectedChat, setSelectedChat] = useState(null);
+  const [groupName, setGroupName] = useState("");
+const [selectedUsers, setSelectedUsers] = useState([]);
+const [showGroupForm, setShowGroupForm] = useState(false);
 
   // LOGIN AND REGISTER
   async function handleSubmit(event) {
@@ -134,6 +137,54 @@ function App() {
   }
 }
 
+async function createGroup() {
+  if (!groupName.trim()) {
+    alert("Enter group name");
+    return;
+  }
+
+  if (selectedUsers.length < 2) {
+    alert("Select at least 2 members");
+    return;
+  }
+
+  try {
+    const token = localStorage.getItem("token");
+
+    const response = await fetch(
+      "http://localhost:5000/api/chats/group",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          groupName,
+          users: selectedUsers
+        })
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Group creation failed");
+    }
+
+    setChats((previous) => [data, ...previous]);
+    setSelectedChat(data);
+
+    setGroupName("");
+    setSelectedUsers([]);
+    setShowGroupForm(false);
+
+    alert("Group created successfully!");
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
   // LOAD CHATS
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -202,6 +253,46 @@ if (isLoggedIn && selectedChat) {
   Welcome! You are logged in.
 </p>
 
+<button onClick={() => setShowGroupForm(!showGroupForm)}>
+  {showGroupForm ? "Cancel" : "+ Create Group"}
+</button>
+
+{showGroupForm && (
+  <div>
+    <h3>Create New Group</h3>
+
+    <input
+      type="text"
+      placeholder="Enter group name"
+      value={groupName}
+      onChange={(e) => setGroupName(e.target.value)}
+    />
+
+    <p>Select at least 2 members:</p>
+
+    {users.map((user) => (
+      <label key={user._id} style={{ display: "block" }}>
+        <input
+          type="checkbox"
+          checked={selectedUsers.includes(user._id)}
+          onChange={(e) => {
+            setSelectedUsers((previous) =>
+              e.target.checked
+                ? [...previous, user._id]
+                : previous.filter((id) => id !== user._id)
+            );
+          }}
+        />
+        {user.name} ({user.email})
+      </label>
+    ))}
+
+    <button onClick={createGroup}>
+      Create Group
+    </button>
+  </div>
+)}
+
 <h3>Find People 🔍</h3>
 
           <form
@@ -238,19 +329,31 @@ if (isLoggedIn && selectedChat) {
           ) : (
             <div>
               {chats.map((chat) => (
-                <div key={chat._id}>
-                  <h4>
-                    {chat.isGroup
-                      ? chat.chatName
-                      : chat.participants
-                          ?.map((person) => person.name)
-                          .join(", ") || "Chat"}
-                  </h4>
+                <div
+  key={chat._id}
+  onClick={() => setSelectedChat(chat)}
+  style={{
+    cursor: "pointer",
+    padding: "12px",
+    borderBottom: "1px solid #ddd"
+  }}
+>
+  <h4>
+    {chat.isGroupChat
+      ? `👥 ${chat.groupName}`
+      : chat.participants
+          ?.filter(
+            (person) =>
+              person._id !== localStorage.getItem("userId")
+          )
+          .map((person) => person.name)
+          .join(", ") || "Chat"}
+  </h4>
 
-                  <p>
-                    {chat.lastMessage?.content || "No messages yet"}
-                  </p>
-                </div>
+  <p>
+    {chat.lastMessage?.content || "No messages yet"}
+  </p>
+</div>
               ))}
             </div>
           )}

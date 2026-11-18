@@ -11,7 +11,17 @@ function ChatWindow({ chat, onBack }) {
   useEffect(() => {
     if (!chat?._id) return;
 
-    const socket = io("http://localhost:5000");
+    const token = localStorage.getItem("token");
+
+const socket = io("http://localhost:5000", {
+  auth: {
+    token: token
+  }
+});
+
+socket.on("connect_error", (error) => {
+  console.error("Socket authentication failed:", error.message);
+});
 
     socket.on("connect", () => {
       console.log("Connected:", socket.id);

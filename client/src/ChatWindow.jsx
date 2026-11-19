@@ -1,6 +1,32 @@
-
+import React from "react";
 import { io } from "socket.io-client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+
+function formatMessageTime(date) {
+  return new Date(date).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function getDateLabel(date) {
+  const messageDate = new Date(date);
+  const today = new Date();
+  const yesterday = new Date();
+
+  yesterday.setDate(today.getDate() - 1);
+
+  const sameDay = (a, b) =>
+    a.getDate() === b.getDate() &&
+    a.getMonth() === b.getMonth() &&
+    a.getFullYear() === b.getFullYear();
+
+  if (sameDay(messageDate, today)) return "Today";
+  if (sameDay(messageDate, yesterday)) return "Yesterday";
+
+  return messageDate.toLocaleDateString();
+}
+
 
 function ChatWindow({ chat, onBack }) {
   const [currentChat, setCurrentChat] = useState(chat);
@@ -12,12 +38,22 @@ function ChatWindow({ chat, onBack }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState([]);
 
+  const [hasLeftGroup, setHasLeftGroup] = useState(false);
+  const messagesEndRef = useRef(null);
+
+
   const token = localStorage.getItem("token");
   const currentUserId = localStorage.getItem("userId");
 
   useEffect(() => {
     setCurrentChat(chat);
   }, [chat]);
+
+  useEffect(() => {
+  messagesEndRef.current?.scrollIntoView({
+    behavior: "smooth"
+  });
+}, [messages]);
 
   const isGroup = currentChat.isGroupChat;
   const chatTitle = isGroup
@@ -216,6 +252,42 @@ useEffect(() => {
     }
   }
 
+  async function leaveGroup() {
+  const confirmLeave = window.confirm(
+    "Are you sure you want to leave this group?"
+  );
+
+  if (!confirmLeave) return;
+
+  try {
+    const response = await fetch(
+      `http://localhost:5000/api/chats/${currentChat._id}/leave`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Unable to leave group");
+    }
+
+    alert("You left the group successfully!");
+
+    setHasLeftGroup(true);
+    window.dispatchEvent(new Event("chat-list-refresh"));
+    onBack();
+
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+
   // REMOVE MEMBER
   async function removeMember(userId) {
     if (!window.confirm("Remove this member from group?")) return;
@@ -265,53 +337,78 @@ useEffect(() => {
             <div>
               <h3>Members</h3>
 
-              {currentChat.participants?.map((member) => {
-                const memberId = member._id || member;
-                const memberName = member.name || "Member";
+              
+<div className="group-members">
+  {currentChat.participants?.map((member) => {
+    const memberId = member._id || member;
+    const memberName = member.name || "Member";
 
-                return (
-                  <div key={memberId}>
-                    <span>
-                      {memberName}
-                      {String(memberId) === String(adminId) && " 👑 Admin"}
-                    </span>
+    return (
+      <div className="member-row" key={memberId}>
+        <span>
+          {memberName}
+          {String(memberId) === String(adminId) && " 👑 Admin"}
+        </span>
 
-                    {isAdmin &&
-                      String(memberId) !== String(currentUserId) && (
-                        <button onClick={() => removeMember(memberId)}>
-                          Remove
-                        </button>
-                      )}
-                  </div>
-                );
-              })}
+        {isAdmin &&
+          String(memberId) !== String(adminId) && (
+            <button
+              type="button"
+              onClick={() => removeMember(memberId)}
+            >
+              Remove
+            </button>
+          )}
+      </div>
+    );
+  })}
+</div>
+
+{currentChat.isGroupChat &&
+  !hasLeftGroup &&
+  currentChat.participants?.some(
+    (member) =>
+      String(member._id || member) ===
+      String(localStorage.getItem("userId"))
+  ) && (
+    <button
+      type="button"
+      className="leave-group-btn"
+      onClick={leaveGroup}
+    >
+      Leave Group
+    </button>
+  )}
+
 
               {isAdmin && (
-                <div>
-                  <h3>Add New Members</h3>
+  <div className="add-members-section">
+    <h3>Add New Members</h3>
 
-                  <form onSubmit={searchGroupUsers}>
-                    <input
-                      type="text"
-                      placeholder="Search users by name or email"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
+    <form className="add-member-search" onSubmit={searchGroupUsers}>
+      <input
+        type="text"
+        placeholder="Search users by name or email"
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+      />
 
-                    <button type="submit">Search</button>
-                  </form>
+      <button type="submit">Search</button>
+    </form>
 
-                  {searchResults.map((user) => (
-                    <div key={user._id}>
-                      <span>{user.name} ({user.email})</span>
+    <div className="search-results">
+      {searchResults.map((user) => (
+        <div className="member-row" key={user._id}>
+          <span>{user.name} ({user.email})</span>
 
-                      <button onClick={() => addMember(user._id)}>
-                        + Add
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+          <button type="button" onClick={() => addMember(user._id)}>
+            + Add
+          </button>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
 
               {!isAdmin && (
                 <p>Only the group admin can manage members.</p>
@@ -321,41 +418,84 @@ useEffect(() => {
         </div>
       )}
 
-      <div className="messages">
-        {loading ? (
-          <p>Loading messages...</p>
-        ) : messages.length === 0 ? (
-          <p>No messages yet. Say hello!</p>
-        ) : (
-          messages.map((message) => (
-            <div
-              key={message._id}
-              className={
-                String(message.sender?._id || message.sender) ===
-                String(currentUserId)
-                  ? "sent-message"
-                  : "received-message"
-              }
-            >
-              <p>{message.content}</p>
-            </div>
-          ))
-        )}
+<div className="messages">
+  {loading ? (
+    <p>Loading messages...</p>
+  ) : messages.length === 0 ? (
+    <p>No messages yet. Say hello!</p>
+  ) : (
+    messages.map((message, index) => {
+      const showDate =
+        index === 0 ||
+        getDateLabel(message.createdAt) !==
+          getDateLabel(messages[index - 1].createdAt);
+
+      return (
+  <div key={message._id}>
+    {showDate && (
+      <div className="date-separator">
+        <span>{getDateLabel(message.createdAt)}</span>
       </div>
+    )}
 
-      <form onSubmit={sendMessage}>
-        <input
-          type="text"
-          placeholder="Type a message..."
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-        />
+    {message.messageType === "system" ? (
+      <div className="system-message">
+        <span>{message.content}</span>
+        <small className="message-time">
+          {formatMessageTime(message.createdAt)}
+        </small>
+      </div>
+    ) : (
+      <div
+        className={
+          String(message.sender?._id || message.sender) ===
+          String(currentUserId)
+            ? "message-row sent-row"
+            : "message-row received-row"
+        }
+      >
+        <div
+          className={
+            String(message.sender?._id || message.sender) ===
+            String(currentUserId)
+              ? "sent-message"
+              : "received-message"
+          }
+        >
+          <p>{message.content}</p>
+          <small className="message-time">
+            {formatMessageTime(message.createdAt)}
+          </small>
+        </div>
+      </div>
+    )}
+  </div>
+);
+    })
+  )}
 
-        <button type="submit">Send</button>
-      </form>
+  <div ref={messagesEndRef}></div>
+</div>
 
-    </div>
-  );
+{!hasLeftGroup &&
+  (!currentChat.isGroupChat ||
+    currentChat.participants?.some(
+      (member) =>
+        String(member._id || member) ===
+        String(localStorage.getItem("userId"))
+    )) && (
+    <form onSubmit={sendMessage}>
+      <input
+        type="text"
+        placeholder="Type a message..."
+        value={newMessage}
+        onChange={(e) => setNewMessage(e.target.value)}
+      />
+      <button type="submit">Send</button>
+    </form>
+  )}
+</div>
+);
 }
 
 export default ChatWindow;

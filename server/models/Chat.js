@@ -9,6 +9,12 @@ const chatSchema = new mongoose.Schema(
                 required: true
             }
         ],
+        leftMembers: [
+            {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "User"
+            }
+        ],
 
         isGroupChat: {
             type: Boolean,

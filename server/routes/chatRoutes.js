@@ -156,15 +156,19 @@ router.get("/:chatId/messages", protect, async (req, res) => {
             });
         }
 
-        const isParticipant = chat.participants.some(
-            id => id.toString() === req.user.toString()
-        );
+              const isParticipant = chat.participants.some(
+          id => id.toString() === req.user.toString()
+      );
 
-        if (!isParticipant) {
-            return res.status(403).json({
-                message: "You are not a participant of this chat"
-            });
-        }
+      const hasLeftGroup = chat.leftMembers?.some(
+          id => id.toString() === req.user.toString()
+      );
+
+      if (!isParticipant && !hasLeftGroup) {
+          return res.status(403).json({
+              message: "You do not have access to this chat"
+          });
+      }
 
         // Mark chat as read for current user
 chat.unreadBy = chat.unreadBy.filter(
@@ -197,11 +201,15 @@ chat.participants.forEach((participantId) => {
 router.get("/", protect, async (req, res) => {
     try {
         const chats = await Chat.find({
-            participants: req.user
-        })
-            .populate("participants", "name email")
-            .populate("lastMessage")
-            .sort({ updatedAt: -1 });
+    $or: [
+        { participants: req.user },
+        { leftMembers: req.user }
+    ]
+})
+    .populate("participants", "name email")
+    .populate("leftMembers", "name email")
+    .populate("lastMessage")
+    .sort({ updatedAt: -1 });
 
         res.status(200).json(chats);
 
@@ -450,6 +458,16 @@ router.delete("/:chatId/members/:userId", protect, async (req, res) => {
       id => id.toString() === userId
     );
 
+    const User = require("../models/User");
+const leavingUser = await User.findById(userId);
+
+const systemMessage = await Message.create({
+  chat: chatId,
+  sender: null,
+  content: `${leavingUser.name} left the group`,
+  messageType: "system"
+});
+
     if (!isMember) {
       return res.status(404).json({
         message: "User is not a member of this group"
@@ -461,6 +479,7 @@ router.delete("/:chatId/members/:userId", protect, async (req, res) => {
       id => id.toString() !== userId
     );
 
+    chat.lastMessage = systemMessage._id;
     await chat.save();
 
     const updatedChat = await Chat.findById(chatId)
@@ -476,6 +495,117 @@ router.delete("/:chatId/members/:userId", protect, async (req, res) => {
     });
   }
 });
+
+
+// Leave Group API
+
+// Leave Group API
+router.delete("/:chatId/leave", protect, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const userId = req.user.toString();
+
+    if (!mongoose.isValidObjectId(chatId)) {
+      return res.status(400).json({
+        message: "Invalid chat ID"
+      });
+    }
+
+    const chat = await Chat.findById(chatId);
+
+    if (!chat) {
+      return res.status(404).json({
+        message: "Chat not found"
+      });
+    }
+
+    if (!chat.isGroupChat) {
+      return res.status(400).json({
+        message: "This is not a group chat"
+      });
+    }
+
+    const isMember = chat.participants.some(
+      id => id.toString() === userId
+    );
+
+    if (!isMember) {
+      return res.status(403).json({
+        message: "You are not a member of this group"
+      });
+    }
+
+    // Get leaving user's name
+    const User = require("../models/User");
+    const leavingUser = await User.findById(userId);
+
+    // Create system notification
+    const systemMessage = await Message.create({
+      chat: chatId,
+      sender: null,
+      content: `${leavingUser.name} left the group`,
+      messageType: "system"
+    });
+
+    // Save user in leftMembers
+    chat.leftMembers = chat.leftMembers || [];
+
+    if (!chat.leftMembers.some(
+      id => id.toString() === userId
+    )) {
+      chat.leftMembers.push(userId);
+    }
+
+    // Remove from active participants
+    chat.participants = chat.participants.filter(
+      id => id.toString() !== userId
+    );
+
+    // Remove unread status
+    chat.unreadBy = (chat.unreadBy || []).filter(
+      id => id.toString() !== userId
+    );
+
+    // Assign new admin if current admin leaves
+    if (chat.groupAdmin?.toString() === userId) {
+      chat.groupAdmin = chat.participants[0] || null;
+    }
+
+    // Update latest message
+    chat.lastMessage = systemMessage._id;
+
+    await chat.save();
+
+    const io = req.app.get("io");
+
+    // Notify remaining members
+chat.participants.forEach(participantId => {
+  io.to(participantId.toString()).emit(
+    "receive-message",
+    systemMessage
+  );
+
+  io.to(participantId.toString()).emit(
+    "chat-list-update"
+  );
+});
+
+    res.status(200).json({
+      message: "You left the group successfully",
+      chatId,
+      systemMessage
+    });
+
+  } catch (error) {
+    console.error("Leave group error:", error);
+
+    res.status(500).json({
+      message: "Failed to leave group",
+      error: error.message
+    });
+  }
+});
+
 
 
 module.exports = router;

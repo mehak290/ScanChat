@@ -11,7 +11,7 @@ const messageSchema = new mongoose.Schema(
         sender: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
-            required: true
+            default: null
         },
 
         content: {
@@ -22,7 +22,7 @@ const messageSchema = new mongoose.Schema(
 
         messageType: {
             type: String,
-            enum: ["text"],
+            enum: ["text", "system"],
             default: "text"
         }
     },

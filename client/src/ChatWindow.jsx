@@ -20,6 +20,12 @@ function ChatWindow({ chat, onBack }) {
   }, [chat]);
 
   const isGroup = currentChat.isGroupChat;
+  const chatTitle = isGroup
+  ? currentChat.groupName || "Group Chat"
+  : currentChat.participants?.find(
+      (member) =>
+        String(member._id || member) !== String(currentUserId)
+    )?.name || "Chat";
 
   const adminId =
     currentChat.groupAdmin?._id || currentChat.groupAdmin;
@@ -230,10 +236,9 @@ function ChatWindow({ chat, onBack }) {
       <button onClick={onBack}>← Back</button>
 
       <h2>
-        {isGroup
-          ? `👥 ${currentChat.groupName}`
-          : "Chat 💬"}
-      </h2>
+  {isGroup ? "👥 " : "💬 "}
+  {chatTitle}
+</h2>
 
       {isGroup && (
         <div>

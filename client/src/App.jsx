@@ -4,6 +4,45 @@ import { QRCodeSVG } from "qrcode.react";
 import QRScanner from "./QRScanner";
 import "./App.css";
 
+
+function getChatTitle(chat) {
+  if (chat.isGroupChat) {
+    return `👥 ${chat.groupName || "Group Chat"}`;
+  }
+
+  const currentUserId = localStorage.getItem("userId");
+
+  const otherUser = chat.participants?.find(
+    (person) =>
+      String(person._id || person) !== String(currentUserId)
+  );
+
+  return otherUser?.name || "Chat";
+}
+
+function getLastMessage(chat) {
+  return chat.lastMessage?.content || "No messages yet";
+}
+
+function getChatTime(chat) {
+  const date =
+    chat.lastMessage?.createdAt ||
+    chat.updatedAt ||
+    chat.createdAt;
+
+  if (!date) return "";
+
+  const parsedDate = new Date(date);
+
+  if (isNaN(parsedDate.getTime())) return "";
+
+  return parsedDate.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+
 function App() {
   const [isRegister, setIsRegister] = useState(false);
   const [name, setName] = useState("");
@@ -221,157 +260,161 @@ async function createGroup() {
     loadChats();
   }, [isLoggedIn]);
 
-  // OPEN CHAT WINDOW
-if (isLoggedIn && selectedChat) {
-  return (
-    <ChatWindow
-      chat={selectedChat}
-      onBack={() => setSelectedChat(null)}
-    />
-  );
-}
-
-  // DASHBOARD
+ 
+  // TWO COLUMN DASHBOARD
   if (isLoggedIn) {
     return (
-      <div className="login-container">
-        <div className="login-card">
-          <h1>ScanChat 💬</h1>
+      <div className="app-layout">
+        <aside className="sidebar">
+          <div className="sidebar-header">
+            <h1>ScanChat 💬</h1>
+            <p>Connect instantly. Chat freely.</p>
+          </div>
 
-<h3>My QR Code 📱</h3>
+          <div className="qr-section">
+            <h3>My QR Code 📱</h3>
+            <QRCodeSVG
+              value={localStorage.getItem("userId") || "ScanChat"}
+              size={120}
+            />
+            <p>Scan to connect!</p>
+            <QRScanner onScan={openChatWithScannedUser} />
+          </div>
 
-<QRCodeSVG
-  value={localStorage.getItem("userId") || "ScanChat"}
-  size={200}
-/>
+          <button
+            className="create-group-btn"
+            onClick={() => setShowGroupForm(!showGroupForm)}
+          >
+            {showGroupForm ? "Cancel" : "+ Create Group"}
+          </button>
 
-<p>Let others scan your QR code to connect!</p>
+          {showGroupForm && (
+            <div className="group-form">
+              <h3>Create New Group</h3>
+              <input
+                type="text"
+                placeholder="Group name"
+                value={groupName}
+                onChange={(e) => setGroupName(e.target.value)}
+              />
 
-<QRScanner onScan={openChatWithScannedUser} />
+              <p>Select at least 2 members:</p>
 
-<p className="subtitle">
-  Welcome! You are logged in.
-</p>
+              {users.map((user) => (
+                <label key={user._id}>
+                  <input
+                    type="checkbox"
+                    checked={selectedUsers.includes(user._id)}
+                    onChange={(e) => {
+                      setSelectedUsers((previous) =>
+                        e.target.checked
+                          ? [...previous, user._id]
+                          : previous.filter((id) => id !== user._id)
+                      );
+                    }}
+                  />
+                  {user.name}
+                </label>
+              ))}
 
-<button onClick={() => setShowGroupForm(!showGroupForm)}>
-  {showGroupForm ? "Cancel" : "+ Create Group"}
-</button>
-
-{showGroupForm && (
-  <div>
-    <h3>Create New Group</h3>
-
-    <input
-      type="text"
-      placeholder="Enter group name"
-      value={groupName}
-      onChange={(e) => setGroupName(e.target.value)}
-    />
-
-    <p>Select at least 2 members:</p>
-
-    {users.map((user) => (
-      <label key={user._id} style={{ display: "block" }}>
-        <input
-          type="checkbox"
-          checked={selectedUsers.includes(user._id)}
-          onChange={(e) => {
-            setSelectedUsers((previous) =>
-              e.target.checked
-                ? [...previous, user._id]
-                : previous.filter((id) => id !== user._id)
-            );
-          }}
-        />
-        {user.name} ({user.email})
-      </label>
-    ))}
-
-    <button onClick={createGroup}>
-      Create Group
-    </button>
-  </div>
-)}
-
-<h3>Find People 🔍</h3>
+              <button onClick={createGroup}>Create Group</button>
+            </div>
+          )}
 
           <form
-            onSubmit={(event) => {
-              event.preventDefault();
+            className="user-search"
+            onSubmit={(e) => {
+              e.preventDefault();
               searchUsers();
             }}
           >
             <input
-              type="text"
-              placeholder="Search by name or email..."
+              placeholder="Find people..."
               value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
+              onChange={(e) => setSearchTerm(e.target.value)}
             />
-
             <button type="submit">Search</button>
           </form>
 
           {users.length > 0 && (
-            <div>
+            <div className="search-results">
               {users.map((user) => (
                 <div key={user._id}>
-                  <p>{user.name}</p>
-                  <p>{user.email}</p>
+                  <span>{user.name}</span>
+                  <small>{user.email}</small>
                 </div>
               ))}
             </div>
           )}
 
-          {chatLoading ? (
-            <p>Loading chats...</p>
-          ) : chats.length === 0 ? (
-            <p>No chats yet. Start a conversation soon!</p>
-          ) : (
-            <div>
-              {chats.map((chat) => (
-                <div
-  key={chat._id}
-  onClick={() => setSelectedChat(chat)}
-  style={{
-    cursor: "pointer",
-    padding: "12px",
-    borderBottom: "1px solid #ddd"
-  }}
->
-  <h4>
-    {chat.isGroupChat
-      ? `👥 ${chat.groupName}`
-      : chat.participants
-          ?.filter(
-            (person) =>
-              person._id !== localStorage.getItem("userId")
-          )
-          .map((person) => person.name)
-          .join(", ") || "Chat"}
-  </h4>
+          <h3 className="chats-heading">Your Conversations</h3>
 
-  <p>
-    {chat.lastMessage?.content || "No messages yet"}
-  </p>
-</div>
-              ))}
-            </div>
-          )}
+          <div className="chat-list">
+            {chatLoading ? (
+              <p>Loading chats...</p>
+            ) : chats.length === 0 ? (
+              <p>No chats yet. Start a conversation!</p>
+            ) : (
+              [...chats]
+                .sort((a, b) => {
+                  const dateA = new Date(
+                    a.lastMessage?.createdAt || a.updatedAt || a.createdAt || 0
+                  ).getTime();
+
+                  const dateB = new Date(
+                    b.lastMessage?.createdAt || b.updatedAt || b.createdAt || 0
+                  ).getTime();
+
+                  return dateB - dateA;
+                })
+                .map((chat) => (
+                  <div
+                    key={chat._id}
+                    className={`chat-list-item ${
+                      selectedChat?._id === chat._id ? "active-chat" : ""
+                    }`}
+                    onClick={() => setSelectedChat(chat)}
+                  >
+                    <div>
+                      <h4>{getChatTitle(chat)}</h4>
+                      <p>{getLastMessage(chat)}</p>
+                    </div>
+                    <small>{getChatTime(chat)}</small>
+                  </div>
+                ))
+            )}
+          </div>
 
           <button
+            className="logout-btn"
             onClick={() => {
               localStorage.removeItem("token");
               localStorage.removeItem("userId");
               localStorage.removeItem("userName");
-
               setIsLoggedIn(false);
+              setSelectedChat(null);
               setChats([]);
               setUsers([]);
             }}
           >
             Logout
           </button>
-        </div>
+        </aside>
+
+        <main className="main-panel">
+          {selectedChat ? (
+            <ChatWindow
+              chat={selectedChat}
+              onBack={() => setSelectedChat(null)}
+            />
+          ) : (
+            <div className="welcome-panel">
+              <h1>Welcome to ScanChat 💬</h1>
+              <p>Select a conversation to start chatting.</p>
+              <p>Or scan someone's QR code to connect instantly.</p>
+            </div>
+          )}
+        </main>
       </div>
     );
   }
@@ -381,10 +424,7 @@ if (isLoggedIn && selectedChat) {
     <div className="login-container">
       <div className="login-card">
         <h1>ScanChat</h1>
-
-        <p className="subtitle">
-          Connect instantly. Chat freely.
-        </p>
+        <p className="subtitle">Connect instantly. Chat freely.</p>
 
         <form onSubmit={handleSubmit}>
           {isRegister && (

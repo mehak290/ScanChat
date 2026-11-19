@@ -28,7 +28,14 @@ const chatSchema = new mongoose.Schema(
         lastMessage: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Message"
-        }
+        },
+    
+        unreadBy: [
+    {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User"
+    }
+],
     },
     {
         timestamps: true

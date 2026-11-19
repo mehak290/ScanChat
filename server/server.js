@@ -69,6 +69,15 @@ io.on("connection", (socket) => {
   // Join personal user room
 socket.join(socket.userId.toString());
 
+socket.on("active-chat", (chatId) => {
+  socket.join(`active-${socket.userId}-${chatId}`);
+});
+
+socket.on("leave-active-chat", (chatId) => {
+  socket.leave(`active-${socket.userId}-${chatId}`);
+});
+
+
   socket.on("join-chat", async (chatId) => {
     try {
       const chat = await Chat.findById(chatId);

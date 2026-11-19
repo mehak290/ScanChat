@@ -44,8 +44,9 @@ useEffect(() => {
   });
 
   socket.on("connect", () => {
-    socket.emit("join-chat", currentChat._id);
-  });
+  socket.emit("join-chat", currentChat._id);
+  socket.emit("active-chat", currentChat._id);
+});
 
   socket.on("connect_error", (error) => {
     console.error("Socket error:", error.message);
@@ -64,7 +65,10 @@ useEffect(() => {
     window.dispatchEvent(new Event("chat-list-refresh"));
   });
 
-  return () => socket.disconnect();
+  return () => {
+  socket.emit("leave-active-chat", currentChat._id);
+  socket.disconnect();
+};
 
 }, [currentChat?._id, token]);
 
@@ -94,6 +98,7 @@ useEffect(() => {
         setMessages(
           Array.isArray(data) ? data : data.messages || []
         );
+        window.dispatchEvent(new Event("chat-list-refresh"));
       } catch (error) {
         console.error(error);
       } finally {

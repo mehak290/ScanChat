@@ -414,21 +414,34 @@ async function createGroup() {
 
                   return dateB - dateA;
                 })
-                .map((chat) => (
-                  <div
-                    key={chat._id}
-                    className={`chat-list-item ${
-                      selectedChat?._id === chat._id ? "active-chat" : ""
-                    }`}
-                    onClick={() => setSelectedChat(chat)}
-                  >
-                    <div>
-                      <h4>{getChatTitle(chat)}</h4>
-                      <p>{getLastMessage(chat)}</p>
-                    </div>
-                    <small>{getChatTime(chat)}</small>
-                  </div>
-                ))
+                .
+map((chat) => {
+  const currentUserId = localStorage.getItem("userId");
+
+  const isUnread = chat.unreadBy?.some(
+    (id) => String(id._id || id) === String(currentUserId)
+  );
+
+  return (
+    <div
+      key={chat._id}
+      className={`chat-list-item ${
+        selectedChat?._id === chat._id ? "active-chat" : ""
+      }`}
+      onClick={() => setSelectedChat(chat)}
+    >
+      <div>
+        <h4>
+          {getChatTitle(chat)}
+          {isUnread && <span className="unread-dot"></span>}
+        </h4>
+        <p>{getLastMessage(chat)}</p>
+      </div>
+      <small>{getChatTime(chat)}</small>
+    </div>
+  );
+})
+
             )}
           </div>
 

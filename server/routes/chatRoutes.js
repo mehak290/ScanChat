@@ -4,6 +4,7 @@ const Chat = require("../models/Chat");
 const Message = require("../models/Message");
 const protect = require("../middleware/authMiddleware");
 
+
 const router = express.Router();
 
 // Create or find one-to-one chat
@@ -55,6 +56,7 @@ router.post("/create", protect, async (req, res) => {
 
 
 // Send Message API
+
 router.post("/:chatId/messages", protect, async (req, res) => {
     try {
         const { chatId } = req.params;
@@ -97,17 +99,32 @@ router.post("/:chatId/messages", protect, async (req, res) => {
         });
 
         chat.lastMessage = message._id;
+
+        // Mark message unread for everyone except sender
+       const io = req.app.get("io");
+
+chat.unreadBy = chat.participants.filter((participantId) => {
+    // Sender ko unread mark nahi karna
+    if (participantId.toString() === req.user.toString()) {
+        return false;
+    }
+
+    // Check whether receiver currently has this chat open
+    const activeRoom = `active-${participantId}-${chatId}`;
+
+    return !io.sockets.adapter.rooms.has(activeRoom);
+});
+
         await chat.save();
+        
 
-        // Real-time message broadcasting
-        const io = req.app.get("io");
-
+        // Real-time message
         io.to(chatId.toString()).emit("receive-message", message);
 
-        // Notify all chat participants to refresh their chat lists
-chat.participants.forEach((participantId) => {
-  io.to(participantId.toString()).emit("chat-list-update");
-});
+        // Notify all participants
+        chat.participants.forEach((participantId) => {
+            io.to(participantId.toString()).emit("chat-list-update");
+        });
 
         res.status(201).json(message);
 
@@ -118,6 +135,7 @@ chat.participants.forEach((participantId) => {
         });
     }
 });
+
 
 // Get Messages API
 router.get("/:chatId/messages", protect, async (req, res) => {
@@ -147,6 +165,20 @@ router.get("/:chatId/messages", protect, async (req, res) => {
                 message: "You are not a participant of this chat"
             });
         }
+
+        // Mark chat as read for current user
+chat.unreadBy = chat.unreadBy.filter(
+    id => id.toString() !== req.user.toString()
+);
+
+await chat.save();
+
+// Notify participants to refresh chat list
+const io = req.app.get("io");
+
+chat.participants.forEach((participantId) => {
+    io.to(participantId.toString()).emit("chat-list-update");
+});
 
         const messages = await Message.find({ chat: chatId })
             .sort({ createdAt: 1 });

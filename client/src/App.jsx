@@ -1,8 +1,8 @@
-import ChatWindow from "./ChatWindow";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";import ChatWindow from "./ChatWindow";
 import { QRCodeSVG } from "qrcode.react";
 import QRScanner from "./QRScanner";
 import "./App.css";
+import { io } from "socket.io-client";
 
 
 function getChatTitle(chat) {
@@ -44,6 +44,7 @@ function getChatTime(chat) {
 
 
 function App() {
+  const isOpeningChat = useRef(false);
   const [isRegister, setIsRegister] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -64,6 +65,31 @@ function App() {
   const [groupName, setGroupName] = useState("");
 const [selectedUsers, setSelectedUsers] = useState([]);
 const [showGroupForm, setShowGroupForm] = useState(false);
+
+const [chatRefresh, setChatRefresh] = useState(0);
+
+// PERSISTENT SOCKET CONNECTION
+// useEffect(() => {
+//   if (!isLoggedIn) return;
+
+//   const token = localStorage.getItem("token");
+
+//   const socket = io("http://localhost:5000", {
+//     auth: { token }
+//   });
+
+//   socket.on("chat-list-update", () => {
+//     setChatRefresh((prev) => prev + 1);
+//   });
+
+//   socket.on("connect_error", (error) => {
+//     console.error("Socket connection error:", error.message);
+//   });
+
+//   return () => {
+//     socket.disconnect();
+//   };
+// }, [isLoggedIn]);
 
   // LOGIN AND REGISTER
   async function handleSubmit(event) {
@@ -146,6 +172,12 @@ const [showGroupForm, setShowGroupForm] = useState(false);
   }
 
   async function openChatWithScannedUser(userId) {
+
+  // Prevent duplicate scans
+  if (isOpeningChat.current) return;
+
+  isOpeningChat.current = true;
+
   try {
     const token = localStorage.getItem("token");
 
@@ -173,6 +205,9 @@ const [showGroupForm, setShowGroupForm] = useState(false);
   } catch (error) {
     console.error("Chat error:", error);
     alert(error.message);
+
+  } finally {
+    isOpeningChat.current = false;
   }
 }
 
@@ -258,9 +293,21 @@ async function createGroup() {
     }
 
     loadChats();
-  }, [isLoggedIn]);
+  }, [isLoggedIn, chatRefresh]);
 
- 
+ //chat list 
+ useEffect(() => {
+  const handleChatRefresh = () => {
+    setChatRefresh((previous) => previous + 1);
+  };
+
+  window.addEventListener("chat-list-refresh", handleChatRefresh);
+
+  return () => {
+    window.removeEventListener("chat-list-refresh", handleChatRefresh);
+  };
+}, []);
+
   // TWO COLUMN DASHBOARD
   if (isLoggedIn) {
     return (

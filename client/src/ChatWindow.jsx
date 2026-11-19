@@ -34,31 +34,41 @@ function ChatWindow({ chat, onBack }) {
     String(adminId) === String(currentUserId);
 
   // SOCKET CONNECTION
-  useEffect(() => {
-    if (!currentChat?._id) return;
+  
+// SOCKET CONNECTION
+useEffect(() => {
+  if (!currentChat?._id) return;
 
-    const socket = io("http://localhost:5000", {
-      auth: { token }
-    });
+  const socket = io("http://localhost:5000", {
+    auth: { token }
+  });
 
-    socket.on("connect", () => {
-      socket.emit("join-chat", currentChat._id);
-    });
+  socket.on("connect", () => {
+    socket.emit("join-chat", currentChat._id);
+  });
 
-    socket.on("connect_error", (error) => {
-      console.error("Socket error:", error.message);
-    });
+  socket.on("connect_error", (error) => {
+    console.error("Socket error:", error.message);
+  });
 
-    socket.on("receive-message", (message) => {
-      setMessages((previous) =>
-        previous.some((item) => item._id === message._id)
-          ? previous
-          : [...previous, message]
-      );
-    });
+  socket.on("receive-message", (message) => {
+    setMessages((previous) =>
+      previous.some((item) => item._id === message._id)
+        ? previous
+        : [...previous, message]
+    );
+  });
 
-    return () => socket.disconnect();
-  }, [currentChat?._id, token]);
+  // Chat list update listener
+  socket.on("chat-list-update", () => {
+    window.dispatchEvent(new Event("chat-list-refresh"));
+  });
+
+  return () => socket.disconnect();
+
+}, [currentChat?._id, token]);
+
+
 
   // LOAD MESSAGES
   useEffect(() => {

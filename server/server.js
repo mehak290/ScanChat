@@ -66,6 +66,8 @@ io.use((socket, next) => {
 // Socket connection
 io.on("connection", (socket) => {
   console.log("Authenticated user connected:", socket.userId);
+  // Join personal user room
+socket.join(socket.userId.toString());
 
   socket.on("join-chat", async (chatId) => {
     try {

@@ -104,6 +104,11 @@ router.post("/:chatId/messages", protect, async (req, res) => {
 
         io.to(chatId.toString()).emit("receive-message", message);
 
+        // Notify all chat participants to refresh their chat lists
+chat.participants.forEach((participantId) => {
+  io.to(participantId.toString()).emit("chat-list-update");
+});
+
         res.status(201).json(message);
 
     } catch (error) {
